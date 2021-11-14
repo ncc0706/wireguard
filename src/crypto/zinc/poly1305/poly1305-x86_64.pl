@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 #
 # Copyright (C) 2017-2018 Samuel Neves <sneves@dei.uc.pt>. All Rights Reserved.
-# Copyright (C) 2017-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+# Copyright (C) 2017-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 # Copyright (C) 2006-2017 CRYPTOGAMS by <appro@openssl.org>. All Rights Reserved.
 #
 # This code is taken from the OpenSSL project but the author, Andy Polyakov,
@@ -35,7 +35,7 @@
 # Skylake-X system performance. Since we are likely to suppress
 # AVX512F capability flag [at least on Skylake-X], conversion serves
 # as kind of "investment protection". Note that next *lake processor,
-# Cannolake, has AVX512IFMA code path to execute...
+# Cannonlake, has AVX512IFMA code path to execute...
 #
 # Numbers are cycles per processed byte with poly1305_blocks alone,
 # measured with rdtsc at fixed clock frequency.
@@ -109,7 +109,7 @@ sub declare_function() {
 	my ($name, $align, $nargs) = @_;
 	if($kernel) {
 		$code .= ".align $align\n";
-		$code .= "ENTRY($name)\n";
+		$code .= "SYM_FUNC_START($name)\n";
 		$code .= ".L$name:\n";
 	} else {
 		$code .= ".globl	$name\n";
@@ -122,7 +122,7 @@ sub declare_function() {
 sub end_function() {
 	my ($name) = @_;
 	if($kernel) {
-		$code .= "ENDPROC($name)\n";
+		$code .= "SYM_FUNC_END($name)\n";
 	} else {
 		$code .= ".size   $name,.-$name\n";
 	}

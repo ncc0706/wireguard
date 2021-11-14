@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #ifndef _WG_COMPATASM_H
@@ -38,6 +38,11 @@
 #define lspull pull
 #undef push
 #undef pull
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 5, 0)
+#define SYM_FUNC_START ENTRY
+#define SYM_FUNC_END ENDPROC
 #endif
 
 #endif /* _WG_COMPATASM_H */

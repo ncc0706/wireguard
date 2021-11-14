@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0
 #
-# Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+# Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 #
 # This script tests the below topology:
 #
@@ -76,8 +76,10 @@ ip0 link add dev wg0 type wireguard
 ip0 link set wg0 netns $netns2
 key1="$(pp wg genkey)"
 key2="$(pp wg genkey)"
+key3="$(pp wg genkey)"
 pub1="$(pp wg pubkey <<<"$key1")"
 pub2="$(pp wg pubkey <<<"$key2")"
+pub3="$(pp wg pubkey <<<"$key3")"
 psk="$(pp wg genpsk)"
 [[ -n $key1 && -n $key2 && -n $psk ]]
 
@@ -142,7 +144,7 @@ big_mtu=$(( 34816 - 1500 + $orig_mtu ))
 # Test using IPv4 as outer transport
 n1 wg set wg0 peer "$pub2" endpoint 127.0.0.1:2
 n2 wg set wg0 peer "$pub1" endpoint 127.0.0.1:1
-# Before calling tests, we first make sure that the stats counters are working
+# Before calling tests, we first make sure that the stats counters and timestamper are working
 n2 ping -c 10 -f -W 1 192.168.241.1
 { read _; read _; read _; read rx_bytes _; read _; read tx_bytes _; } < <(ip2 -stats link show dev wg0)
 (( rx_bytes == 1372 && (tx_bytes == 1428 || tx_bytes == 1460) ))
@@ -152,6 +154,8 @@ read _ rx_bytes tx_bytes < <(n2 wg show wg0 transfer)
 (( rx_bytes == 1372 && (tx_bytes == 1428 || tx_bytes == 1460) ))
 read _ rx_bytes tx_bytes < <(n1 wg show wg0 transfer)
 (( tx_bytes == 1372 && (rx_bytes == 1428 || rx_bytes == 1460) ))
+read _ timestamp < <(n1 wg show wg0 latest-handshakes)
+(( timestamp != 0 ))
 
 tests
 ip1 link set wg0 mtu $big_mtu
@@ -219,6 +223,14 @@ kill $ncat_pid
 n1 wg set wg0 peer "$more_specific_key" remove
 [[ $(n1 wg show wg0 endpoints) == "$pub2	[::1]:9997" ]]
 
+# Test that we can change private keys keys and immediately handshake
+n1 wg set wg0 private-key <(echo "$key1") peer "$pub2" preshared-key <(echo "$psk") allowed-ips 192.168.241.2/32 endpoint 127.0.0.1:2
+n2 wg set wg0 private-key <(echo "$key2") listen-port 2 peer "$pub1" preshared-key <(echo "$psk") allowed-ips 192.168.241.1/32
+n1 ping -W 1 -c 1 192.168.241.2
+n1 wg set wg0 private-key <(echo "$key3")
+n2 wg set wg0 peer "$pub3" preshared-key <(echo "$psk") allowed-ips 192.168.241.1/32 peer "$pub1" remove
+n1 ping -W 1 -c 1 192.168.241.2
+
 ip1 link del wg0
 ip2 link del wg0
 
@@ -229,7 +241,7 @@ ip2 link del wg0
 # │  ┌─────┐             ┌─────┐           │    │    ┌──────┐              ┌──────┐              │     │  ┌─────┐            ┌─────┐            │
 # │  │ wg0 │─────────────│vethc│───────────┼────┼────│vethrc│              │vethrs│──────────────┼─────┼──│veths│────────────│ wg0 │            │
 # │  ├─────┴──────────┐  ├─────┴──────────┐│    │    ├──────┴─────────┐    ├──────┴────────────┐ │     │  ├─────┴──────────┐ ├─────┴──────────┐ │
-# │  │192.168.241.1/24│  │192.168.1.100/24││    │    │192.168.1.100/24│    │10.0.0.1/24        │ │     │  │10.0.0.100/24   │ │192.168.241.2/24│ │
+# │  │192.168.241.1/24│  │192.168.1.100/24││    │    │192.168.1.1/24  │    │10.0.0.1/24        │ │     │  │10.0.0.100/24   │ │192.168.241.2/24│ │
 # │  │fd00::1/24      │  │                ││    │    │                │    │SNAT:192.168.1.0/24│ │     │  │                │ │fd00::2/24      │ │
 # │  └────────────────┘  └────────────────┘│    │    └────────────────┘    └───────────────────┘ │     │  └────────────────┘ └────────────────┘ │
 # └────────────────────────────────────────┘    └────────────────────────────────────────────────┘     └────────────────────────────────────────┘
@@ -268,6 +280,26 @@ n2 ping -W 1 -c 1 192.168.241.1
 # Demonstrate n2 can still send packets to n1, since persistent-keepalive will prevent connection tracking entry from expiring (to see entries: `n0 conntrack -L`).
 pp sleep 3
 n2 ping -W 1 -c 1 192.168.241.1
+n1 wg set wg0 peer "$pub2" persistent-keepalive 0
+
+# Do a wg-quick(8)-style policy routing for the default route, making sure vethc has a v6 address to tease out bugs.
+ip1 -6 addr add fc00::9/96 dev vethc
+ip1 -6 route add default via fc00::1
+ip2 -4 addr add 192.168.99.7/32 dev wg0
+ip2 -6 addr add abab::1111/128 dev wg0
+n1 wg set wg0 fwmark 51820 peer "$pub2" allowed-ips 192.168.99.7,abab::1111
+ip1 -6 route add default dev wg0 table 51820
+ip1 -6 rule add not fwmark 51820 table 51820
+ip1 -6 rule add table main suppress_prefixlength 0
+ip1 -4 route add default dev wg0 table 51820
+ip1 -4 rule add not fwmark 51820 table 51820
+ip1 -4 rule add table main suppress_prefixlength 0
+# suppress_prefixlength only got added in 3.12, and we want to support 3.10+.
+if [[ $(ip1 -4 rule show all) == *suppress_prefixlength* ]]; then
+	# Flood the pings instead of sending just one, to trigger routing table reference counting bugs.
+	n1 ping -W 1 -c 100 -f 192.168.99.7
+	n1 ping -W 1 -c 100 -f abab::1111
+fi
 
 n0 iptables -t nat -F
 ip0 link del vethrc
@@ -481,6 +513,12 @@ n0 wg set wg0 peer "$pub2"
 n0 wg set wg0 private-key <(echo "$key1")
 n0 wg set wg0 peer "$pub2"
 [[ $(n0 wg show wg0 peers) == "$pub2" ]]
+n0 wg set wg0 private-key <(echo "/${key1:1}")
+[[ $(n0 wg show wg0 private-key) == "+${key1:1}" ]]
+n0 wg set wg0 peer "$pub2" allowed-ips 0.0.0.0/0,10.0.0.0/8,100.0.0.0/10,172.16.0.0/12,192.168.0.0/16
+n0 wg set wg0 peer "$pub2" allowed-ips 0.0.0.0/0
+n0 wg set wg0 peer "$pub2" allowed-ips ::/0,1700::/111,5000::/4,e000::/37,9000::/75
+n0 wg set wg0 peer "$pub2" allowed-ips ::/0
 ip0 link del wg0
 
 declare -A objects

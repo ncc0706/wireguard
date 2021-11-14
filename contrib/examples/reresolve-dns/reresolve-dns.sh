@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0
 #
-# Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+# Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 
 set -e
 shopt -s nocasematch
@@ -15,7 +15,7 @@ INTERFACE="${BASH_REMATCH[1]}"
 
 process_peer() {
 	[[ $PEER_SECTION -ne 1 || -z $PUBLIC_KEY || -z $ENDPOINT ]] && return 0
-	[[ $(wg show "$INTERFACE" latest-handshakes) =~ ^${PUBLIC_KEY//+/\\+}\	([0-9]+)$ ]] || return 0
+	[[ $(wg show "$INTERFACE" latest-handshakes) =~ ${PUBLIC_KEY//+/\\+}\	([0-9]+) ]] || return 0
 	(( ($(date +%s) - ${BASH_REMATCH[1]}) > 135 )) || return 0
 	wg set "$INTERFACE" peer "$PUBLIC_KEY" endpoint "$ENDPOINT"
 	reset_peer_section

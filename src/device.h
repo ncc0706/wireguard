@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #ifndef _WG_DEVICE_H
@@ -8,7 +8,7 @@
 
 #include "noise.h"
 #include "allowedips.h"
-#include "hashtables.h"
+#include "peerlookup.h"
 #include "cookie.h"
 
 #include <linux/types.h>
@@ -48,8 +48,8 @@ struct wg_device {
 	int incoming_handshake_cpu;
 	struct multicore_worker __percpu *incoming_handshakes_worker;
 	struct cookie_checker cookie_checker;
-	struct pubkey_hashtable peer_hashtable;
-	struct index_hashtable index_hashtable;
+	struct pubkey_hashtable *peer_hashtable;
+	struct index_hashtable *index_hashtable;
 	struct allowedips peer_allowedips;
 	struct mutex device_update_lock, socket_update_lock;
 	struct list_head device_list, peer_list;
@@ -61,5 +61,13 @@ struct wg_device {
 
 int wg_device_init(void);
 void wg_device_uninit(void);
+
+/* Later after the dust settles, this can be moved into include/linux/skbuff.h,
+ * where virtually all code that deals with GSO segs can benefit, around ~30
+ * drivers as of writing.
+ */
+#define skb_list_walk_safe(first, skb, next)                                   \
+	for (skb = first, next = skb->next; skb;                               \
+	     skb = next, next = skb ? skb->next : NULL)
 
 #endif /* _WG_DEVICE_H */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015-2018 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
+ * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
  */
 
 #ifndef _WG_MESSAGES_H
@@ -38,7 +38,7 @@ enum counter_values {
 };
 
 enum limits {
-	REKEY_AFTER_MESSAGES = U64_MAX - 0xffff,
+	REKEY_AFTER_MESSAGES = 1ULL << 60,
 	REJECT_AFTER_MESSAGES = U64_MAX - COUNTER_WINDOW_SIZE - 1,
 	REKEY_TIMEOUT = 5,
 	REKEY_TIMEOUT_JITTER_MAX_JIFFIES = HZ / 3,
